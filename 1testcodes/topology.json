@@ -1,0 +1,62 @@
+{
+  "topology_name": "Cisco_OSPF_Triangle_Lab_V3",
+  "version": "3.0",
+  "ospf_config": {
+    "area": 0,
+    "auth_type": "MD5",
+    "process_id": 1,
+    "auth_key": "Cisco123"
+  },
+  "nodes": [
+    {
+      "id": "R1",
+      "role": "DR",
+      "router_id": "1.1.1.1",
+      "management": {
+        "user": "admin",
+        "pass": "Admin@123",
+        "snmp": "MyROCommunity"
+      },
+      "interfaces": [
+        { "name": "Loopback0", "ip": "1.1.1.1", "mask": "32", "status": "up" },
+        { "name": "Gi0/0", "ip": "10.1.1.1", "mask": "24", "status": "up", "priority": 255 },
+        { "name": "Gi0/1", "ip": "10.1.3.1", "mask": "24", "status": "up", "priority": 255 }
+      ]
+    },
+    {
+      "id": "R2",
+      "role": "BDR",
+      "router_id": "2.2.2.2",
+      "management": {
+        "user": "admin",
+        "pass": "Admin@123",
+        "snmp": "MyROCommunity"
+      },
+      "interfaces": [
+        { "name": "Loopback0", "ip": "2.2.2.2", "mask": "32", "status": "up" },
+        { "name": "Gi0/0", "ip": "10.1.1.2", "mask": "24", "status": "up", "priority": 100 },
+        { "name": "Gi0/1", "ip": "10.1.2.2", "mask": "24", "status": "up", "priority": 100 }
+      ]
+    },
+    {
+      "id": "R3",
+      "role": "DROTHER",
+      "router_id": "3.3.3.3",
+      "management": {
+        "user": "admin",
+        "pass": "Admin@123",
+        "snmp": "MyROCommunity"
+      },
+      "interfaces": [
+        { "name": "Loopback0", "ip": "3.3.3.3", "mask": "32", "status": "up" },
+        { "name": "Gi0/0", "ip": "10.1.3.3", "mask": "24", "status": "up", "priority": 0 },
+        { "name": "Gi0/1", "ip": "10.1.2.3", "mask": "24", "status": "up", "priority": 0 }
+      ]
+    }
+  ],
+  "links": [
+    { "source": "R1:Gi0/0", "target": "R2:Gi0/0", "network": "10.1.1.0/24" },
+    { "source": "R2:Gi0/1", "target": "R3:Gi0/1", "network": "10.1.2.0/24" },
+    { "source": "R3:Gi0/0", "target": "R1:Gi0/1", "network": "10.1.3.0/24" }
+  ]
+}

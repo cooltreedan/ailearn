@@ -1,0 +1,16 @@
+# ignore Python venv stuff
+bin/
+include/
+lib/
+share/
+pyvenv.cfg
+
+# ingnore project temporary file
+2proj/data/
+2proj/configs/
+2proj/topology_preview.html
+2proj/__pycache__/
+
+# ignore macOS system file
+.DS_Store
+
