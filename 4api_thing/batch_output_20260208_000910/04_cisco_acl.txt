@@ -1,0 +1,182 @@
+# 边界防火墙ACL
+
+以下是Cisco设备边界防火墙ACL配置，适用于生产环境：
+
+## 扩展访问控制列表配置
+
+```cisco
+! ========================================
+! 边界防火墙ACL配置
+! 用途: 生产环境边界安全防护
+! 创建时间: 2024年
+! 维护责任人: 网络安全团队
+! ========================================
+
+! 定义标准网络地址对象组
+object-group network INTERNAL_NETWORKS
+ network-object 192.168.0.0 255.255.0.0
+ network-object 10.0.0.0 255.0.0.0
+ network-object 172.16.0.0 255.240.0.0
+
+object-group network DMZ_SERVERS
+ network-object 192.168.100.0 255.255.255.0
+
+object-group network MANAGEMENT_NETWORKS
+ network-object 192.168.200.0 255.255.255.0
+
+! 定义服务端口对象组
+object-group service WEB_SERVICES
+ service-object tcp eq 80
+ service-object tcp eq 443
+ service-object tcp eq 8080
+ service-object tcp eq 8443
+
+object-group service MAIL_SERVICES
+ service-object tcp eq 25
+ service-object tcp eq 110
+ service-object tcp eq 143
+ service-object tcp eq 993
+ service-object tcp eq 995
+
+object-group service DATABASE_SERVICES
+ service-object tcp eq 1433
+ service-object tcp eq 3306
+ service-object tcp eq 5432
+ service-object tcp eq 1521
+
+! ========================================
+! 入站ACL配置 (从Internet到内网)
+! ========================================
+ip access-list extended INBOUND_ACL
+
+! 拒绝RFC1918私有地址从外部进入
+deny ip 10.0.0.0 0.255.255.255 any log
+deny ip 172.16.0.0 0.15.255.255 any log  
+deny ip 192.168.0.0 0.0.255.255 any log
+
+! 拒绝回环地址和多播地址
+deny ip 127.0.0.0 0.255.255.255 any log
+deny ip 224.0.0.0 31.255.255.255 any log
+
+! 拒绝广播地址
+deny ip any 255.255.255.255 0.0.0.0 log
+
+! 允许已建立的连接和相关连接
+permit tcp any object-group INTERNAL_NETWORKS established
+permit tcp any object-group DMZ_SERVERS established
+
+! 允许公网访问DMZ区域的Web服务
+permit tcp any object-group DMZ_SERVERS object-group WEB_SERVICES
+remark === 允许公网访问Web服务器 ===
+
+! 允许公网访问DMZ区域的邮件服务
+permit tcp any object-group DMZ_SERVERS eq 25
+permit tcp any object-group DMZ_SERVERS eq 587
+remark === 允许SMTP邮件服务 ===
+
+! 允许DNS查询响应
+permit udp any eq 53 object-group INTERNAL_NETWORKS gt 1023
+permit tcp any eq 53 object-group INTERNAL_NETWORKS gt 1023
+remark === 允许DNS响应 ===
+
+! 允许NTP时间同步响应
+permit udp any eq 123 object-group INTERNAL_NETWORKS eq 123
+remark === 允许NTP时间同步 ===
+
+! 允许ICMP必要消息
+permit icmp any any echo-reply
+permit icmp any any unreachable
+permit icmp any any time-exceeded
+permit icmp any any packet-too-big
+remark === 允许必要的ICMP消息 ===
+
+! 拒绝其他ICMP消息
+deny icmp any any log
+
+! 记录并拒绝所有其他入站流量
+deny ip any any log
+remark === 默认拒绝规则 ===
+
+! ========================================
+! 出站ACL配置 (从内网到Internet)
+! ========================================
+ip access-list extended OUTBOUND_ACL
+
+! 拒绝内网访问私有地址段(防止路由泄露)
+deny ip object-group INTERNAL_NETWORKS 10.0.0.0 0.255.255.255 log
+deny ip object-group INTERNAL_NETWORKS 172.16.0.0 0.15.255.255 log
+deny ip object-group INTERNAL_NETWORKS 192.168.0.0 0.0.255.255 log
+
+! 允许内网用户Web浏览
+permit tcp object-group INTERNAL_NETWORKS any object-group WEB_SERVICES
+remark === 允许内网Web访问 ===
+
+! 允许内网用户邮件收发
+permit tcp object-group INTERNAL_NETWORKS any object-group MAIL_SERVICES
+remark === 允许邮件服务 ===
+
+! 允许DNS查询
+permit udp object-group INTERNAL_NETWORKS any eq 53
+permit tcp object-group INTERNAL_NETWORKS any eq 53
+remark === 允许DNS查询 ===
+
+! 允许NTP时间同步
+permit udp object-group INTERNAL_NETWORKS any eq 123
+remark === 允许NTP时间同步 ===
+
+! 允许FTP数据传输
+permit tcp object-group INTERNAL_NETWORKS any eq 21
+permit tcp object-group INTERNAL_NETWORKS any eq 20
+remark === 允许FTP访问 ===
+
+! 允许SFTP和SSH
+permit tcp object-group INTERNAL_NETWORKS any eq 22
+remark === 允许SSH/SFTP访问 ===
+
+! 允许必要的ICMP
+permit icmp object-group INTERNAL_NETWORKS any echo
+permit icmp object-group INTERNAL_NETWORKS any unreachable  
+permit icmp object-group INTERNAL_NETWORKS any time-exceeded
+remark === 允许必要的ICMP ===
+
+! 管理网络特殊权限
+permit tcp object-group MANAGEMENT_NETWORKS any eq 443
+permit tcp object-group MANAGEMENT_NETWORKS any eq 80
+permit tcp object-group MANAGEMENT_NETWORKS any eq 22
+remark === 管理网络访问权限 ===
+
+! 记录并拒绝其他出站流量
+deny ip any any log
+remark === 默认拒绝规则 ===
+
+! ========================================
+! DMZ访问控制列表
+! ========================================
+ip access-list extended DMZ_TO_INTERNAL
+
+! DMZ服务器访问内网数据库
+permit tcp object-group DMZ_SERVERS object-group INTERNAL_NETWORKS object-group DATABASE_SERVICES
+remark === DMZ访问内网数据库 ===
+
+! DMZ服务器DNS查询
+permit udp object-group DMZ_SERVERS object-group INTERNAL_NETWORKS eq 53
+permit tcp object-group DMZ_SERVERS object-group INTERNAL_NETWORKS eq 53
+remark === DMZ DNS查询 ===
+
+! DMZ服务器时间同步
+permit udp object-group DMZ_SERVERS object-group INTERNAL_NETWORKS eq 123
+remark === DMZ时间同步 ===
+
+! DMZ服务器日志传输
+permit udp object-group DMZ_SERVERS object-group INTERNAL_NETWORKS eq 514
+remark === DMZ日志传输 ===
+
+! 拒绝其他DMZ到内网的访问
+deny ip object-group DMZ_SERVERS object-group INTERNAL_NETWORKS log
+
+! ========================================
+! 应用ACL到接口
+! ========================================
+
+interface GigabitEthernet0/0
+ description === 外网接口

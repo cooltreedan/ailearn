@@ -1,0 +1,189 @@
+```cisco
+!
+! BGP配置 - 双ISP冗余，优先ISP1
+! 本地AS: 65530, ISP1: AS65531, ISP2: AS66535
+!
+
+! ===== 基础接口配置 =====
+interface GigabitEthernet1
+ description ISP1-Primary-Connection
+ ip address dhcp  ! 或配置静态IP
+ no shutdown
+!
+interface GigabitEthernet2
+ description ISP2-Backup-Connection
+ ip address dhcp  ! 或配置静态IP
+ no shutdown
+!
+
+! ===== BGP路由器配置 =====
+router bgp 65530
+ ! 基础BGP参数
+ bgp router-id 192.168.1.1  ! 根据实际环境调整
+ bgp log-neighbor-changes
+ bgp deterministic-med
+ bgp bestpath as-path multipath-relax
+ bgp bestpath compare-routerid
+ 
+ ! 默认local preference设置
+ bgp default local-preference 100
+ 
+ ! ===== ISP1邻居配置 (主线路) =====
+ neighbor ISP1_IP remote-as 65531  ! 替换为ISP1实际IP
+ neighbor ISP1_IP description ISP1-Primary-Provider
+ neighbor ISP1_IP ebgp-multihop 2
+ neighbor ISP1_IP update-source GigabitEthernet1
+ neighbor ISP1_IP route-map ISP1-IN in
+ neighbor ISP1_IP route-map ISP1-OUT out
+ neighbor ISP1_IP maximum-prefix 750000 85 restart 300
+ neighbor ISP1_IP soft-reconfiguration inbound
+ neighbor ISP1_IP password 7 encrypted_password_here  ! 使用强密码
+ neighbor ISP1_IP timers 30 90
+ 
+ ! ===== ISP2邻居配置 (备用线路) =====
+ neighbor ISP2_IP remote-as 66535  ! 替换为ISP2实际IP
+ neighbor ISP2_IP description ISP2-Backup-Provider
+ neighbor ISP2_IP ebgp-multihop 2
+ neighbor ISP2_IP update-source GigabitEthernet2
+ neighbor ISP2_IP route-map ISP2-IN in
+ neighbor ISP2_IP route-map ISP2-OUT out
+ neighbor ISP2_IP maximum-prefix 750000 85 restart 300
+ neighbor ISP2_IP soft-reconfiguration inbound
+ neighbor ISP2_IP password 7 encrypted_password_here  ! 使用强密码
+ neighbor ISP2_IP timers 30 90
+ 
+ ! ===== 地址族配置 =====
+ address-family ipv4
+  neighbor ISP1_IP activate
+  neighbor ISP2_IP activate
+  network 192.168.0.0 mask 255.255.0.0  ! 宣告本地网络
+  no auto-summary
+  no synchronization
+ exit-address-family
+!
+
+! ===== 前缀列表定义 =====
+! 允许所有路由入站（生产环境建议更严格的过滤）
+ip prefix-list ALLOW-ALL seq 5 permit 0.0.0.0/0 le 32
+!
+! 拒绝私有地址空间
+ip prefix-list DENY-PRIVATE seq 5 deny 10.0.0.0/8 le 32
+ip prefix-list DENY-PRIVATE seq 10 deny 172.16.0.0/12 le 32
+ip prefix-list DENY-PRIVATE seq 15 deny 192.168.0.0/16 le 32
+ip prefix-list DENY-PRIVATE seq 20 deny 169.254.0.0/16 le 32
+ip prefix-list DENY-PRIVATE seq 25 deny 224.0.0.0/4 le 32
+ip prefix-list DENY-PRIVATE seq 30 deny 240.0.0.0/4 le 32
+ip prefix-list DENY-PRIVATE seq 35 permit 0.0.0.0/0 le 32
+!
+! 本地网络宣告列表
+ip prefix-list LOCAL-NETWORKS seq 5 permit 192.168.0.0/16 le 24
+!
+
+! ===== 路由映射配置 =====
+! ISP1入站路由映射 - 设置高优先级（local preference 200）
+route-map ISP1-IN permit 10
+ description ISP1-Primary-Inbound-Policy
+ match ip address prefix-list DENY-PRIVATE
+ set local-preference 200  ! 高优先级，确保ISP1为主路径
+ set community 65530:100
+!
+route-map ISP1-IN deny 20
+ description Block-Invalid-Routes
+!
+
+! ISP2入站路由映射 - 设置低优先级（local preference 150）
+route-map ISP2-IN permit 10
+ description ISP2-Backup-Inbound-Policy
+ match ip address prefix-list DENY-PRIVATE
+ set local-preference 150  ! 低优先级，作为备用路径
+ set community 65530:200
+!
+route-map ISP2-IN deny 20
+ description Block-Invalid-Routes
+!
+
+! ISP1出站路由映射
+route-map ISP1-OUT permit 10
+ description ISP1-Outbound-Policy
+ match ip address prefix-list LOCAL-NETWORKS
+ set community 65530:100
+!
+route-map ISP1-OUT deny 20
+ description Block-All-Other-Routes
+!
+
+! ISP2出站路由映射
+route-map ISP2-OUT permit 10
+ description ISP2-Outbound-Policy
+ match ip address prefix-list LOCAL-NETWORKS
+ set community 65530:200
+!
+route-map ISP2-OUT deny 20
+ description Block-All-Other-Routes
+!
+
+! ===== 安全配置 =====
+! 访问控制列表
+access-list 99 permit ISP1_IP  ! ISP1 IP地址
+access-list 99 permit ISP2_IP  ! ISP2 IP地址
+access-list 99 deny any log
+!
+
+! BGP安全加固
+ip bgp-community new-format
+!
+! 防止路由泄露
+router bgp 65530
+ no bgp default ipv4-unicast
+ bgp graceful-restart
+!
+
+! ===== 监控和日志配置 =====
+logging buffered 16384
+logging console warnings
+logging monitor warnings
+logging trap notifications
+logging facility local0
+!
+! SNMP配置（可选）
+snmp-server community public RO 99
+snmp-server location "Data-Center-Location"
+snmp-server contact "network-admin@company.com"
+!
+
+! ===== IP SLA配置用于监控 =====
+ip sla 1
+ icmp-echo ISP1_GATEWAY_IP  ! ISP1网关IP
+ threshold 1000
+ timeout 2000
+ frequency 10
+!
+ip sla schedule 1 life forever start-time now
+!
+ip sla 2
+ icmp-echo ISP2_GATEWAY_IP  ! ISP2网关IP
+ threshold 1000
+ timeout 2000
+ frequency 10
+!
+ip sla schedule 2 life forever start-time now
+!
+
+! ===== 备注 =====
+! 配置说明：
+! 1. ISP1通过local preference 200设置为主路径
+! 2. ISP2通过local preference 150设置为备用路径
+! 3. 实施了严格的路由过滤和安全措施
+! 4. 包含监控和日志记录功能
+! 5. 使用密码认证增强安全性
+! 6. 配置了最大前缀限制防止路由表溢出
+! 
+! 部署前请替换以下变量：
+! - ISP1_IP: ISP1的BGP邻居IP地址
+! - ISP2_IP: ISP2的BGP邻居IP地址
+! - ISP1_GATEWAY_IP: ISP1的网关IP地址
+! - ISP2_GATEWAY_IP: ISP2的网关IP地址
+! - encrypted_password_here: 实际的加密密码
+! - 调整本地网络地址段以匹配实际环境
+!
+```

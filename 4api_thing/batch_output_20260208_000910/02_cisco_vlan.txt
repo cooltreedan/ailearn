@@ -1,0 +1,288 @@
+# 接入交换机VLAN配置
+
+# Cisco接入交换机VLAN配置
+
+以下是一套完整的Cisco接入交换机VLAN配置，适用于生产环境：
+
+## 基础VLAN配置
+
+```cisco
+! ================================
+! VLAN定义和命名
+! ================================
+vlan 10
+ name MGMT_NETWORK
+ exit
+
+vlan 20
+ name OFFICE_USERS
+ exit
+
+vlan 30
+ name GUEST_NETWORK
+ exit
+
+vlan 40
+ name SERVERS
+ exit
+
+vlan 50
+ name PRINTERS
+ exit
+
+vlan 60
+ name SECURITY_DEVICES
+ exit
+
+vlan 99
+ name NATIVE_VLAN
+ exit
+
+! ================================
+! 管理VLAN配置
+! ================================
+interface vlan 10
+ description Management VLAN
+ ip address 192.168.10.10 255.255.255.0
+ no shutdown
+ exit
+
+! 设置默认网关
+ip default-gateway 192.168.10.1
+
+! 设置管理域名和DNS
+ip domain-name company.local
+ip name-server 192.168.10.100
+ip name-server 8.8.8.8
+```
+
+## 接入端口配置
+
+```cisco
+! ================================
+! 用户接入端口配置 (FastEthernet 0/1-20)
+! ================================
+interface range fastethernet 0/1 - 20
+ description User Access Ports
+ switchport mode access
+ switchport access vlan 20
+ switchport port-security
+ switchport port-security maximum 2
+ switchport port-security violation restrict
+ switchport port-security mac-address sticky
+ switchport port-security aging time 60
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+ storm-control broadcast level 5.00
+ storm-control multicast level 5.00
+ storm-control unicast level 10.00
+ no shutdown
+ exit
+
+! ================================
+! 服务器端口配置 (FastEthernet 0/21-24)
+! ================================
+interface range fastethernet 0/21 - 24
+ description Server Access Ports
+ switchport mode access
+ switchport access vlan 40
+ switchport port-security
+ switchport port-security maximum 1
+ switchport port-security violation shutdown
+ switchport port-security mac-address sticky
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+ no shutdown
+ exit
+
+! ================================
+! 打印机端口配置 (FastEthernet 0/25-30)
+! ================================
+interface range fastethernet 0/25 - 30
+ description Printer Access Ports
+ switchport mode access
+ switchport access vlan 50
+ switchport port-security
+ switchport port-security maximum 1
+ switchport port-security violation restrict
+ switchport port-security mac-address sticky
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+ no shutdown
+ exit
+
+! ================================
+! 访客端口配置 (FastEthernet 0/31-40)
+! ================================
+interface range fastethernet 0/31 - 40
+ description Guest Access Ports
+ switchport mode access
+ switchport access vlan 30
+ switchport port-security
+ switchport port-security maximum 1
+ switchport port-security violation restrict
+ switchport port-security aging time 30
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+ storm-control broadcast level 3.00
+ storm-control multicast level 3.00
+ no shutdown
+ exit
+```
+
+## Trunk端口配置
+
+```cisco
+! ================================
+! 上联Trunk端口配置 (GigabitEthernet 0/1-2)
+! ================================
+interface range gigabitethernet 0/1 - 2
+ description Uplink to Core Switch
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 10,20,30,40,50,60
+ switchport nonegotiate
+ spanning-tree link-type point-to-point
+ channel-group 1 mode active
+ no shutdown
+ exit
+
+! ================================
+! EtherChannel配置
+! ================================
+interface port-channel 1
+ description Uplink Port-Channel to Core
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ switchport trunk native vlan 99
+ switchport trunk allowed vlan 10,20,30,40,50,60
+ switchport nonegotiate
+ no shutdown
+ exit
+```
+
+## 安全配置
+
+```cisco
+! ================================
+! 全局安全配置
+! ================================
+
+! 启用端口安全老化
+port-security aging-time 1440
+
+! DHCP监听配置
+ip dhcp snooping
+ip dhcp snooping vlan 20,30,50
+ip dhcp snooping information option
+no ip dhcp snooping information option
+
+! 信任上联端口
+interface range gigabitethernet 0/1 - 2
+ ip dhcp snooping trust
+ exit
+
+! 动态ARP检查
+ip arp inspection vlan 20,30,50
+interface range gigabitethernet 0/1 - 2
+ ip arp inspection trust
+ exit
+
+! IP Source Guard (可选，根据需求启用)
+! interface range fastethernet 0/1 - 20
+!  ip verify source
+!  exit
+
+! ================================
+! STP安全配置
+! ================================
+spanning-tree mode rapid-pvst
+spanning-tree loopguard default
+spanning-tree portfast bpduguard default
+spanning-tree portfast bpdufilter default
+
+! 对所有VLAN启用RSTP
+spanning-tree vlan 10,20,30,40,50,60,99 priority 61440
+
+! ================================
+! 未使用端口安全配置
+! ================================
+interface range fastethernet 0/41 - 48
+ description Unused Ports - Security Hardened
+ switchport mode access
+ switchport access vlan 999
+ switchport port-security
+ switchport port-security maximum 1
+ switchport port-security violation shutdown
+ shutdown
+ exit
+
+! 创建黑洞VLAN
+vlan 999
+ name UNUSED_PORTS
+ exit
+```
+
+## 管理和监控配置
+
+```cisco
+! ================================
+! SNMP配置
+! ================================
+snmp-server community public RO
+snmp-server community private RW
+snmp-server location "Building A Floor 2"
+snmp-server contact "IT Support: support@company.com"
+snmp-server enable traps
+
+! ================================
+! 日志配置
+! ================================
+logging buffered 8192
+logging console warnings
+logging monitor warnings
+logging trap informational
+logging facility local0
+logging source-interface vlan 10
+logging 192.168.10.100
+
+! ================================
+! NTP配置
+! ================================
+ntp server 192.168.10.200
+ntp server pool.ntp.org
+clock timezone CST +8
+
+! ================================
+! SSH和远程管理配置
+! ================================
+ip ssh version 2
+ip ssh time-out 60
+ip ssh authentication-retries 3
+
+line vty 0 15
+ transport input ssh
+ login local
+ exec-timeout 30 0
+ exit
+
+! 创建本地管理用户
+username admin privilege 15 secret Cisco123!@#
+username operator privilege 1 secret Operator123!
+
+! ================================
+! 接口监控配置
+! ================================
+! 启用接口错误自动恢复
+errdisable recovery cause psecure-violation
+errdisable recovery interval 600
+
+errdisable recovery cause bpduguard  
+errdisable recovery interval 300
+
+errdisable recovery cause storm-control
+errdisable recovery interval 300
+```
+
+## 保存

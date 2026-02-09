@@ -1,0 +1,239 @@
+# 核心交换机初始化
+
+以下是Cisco核心交换机的生产环境标准初始化配置：
+
+```cisco
+! ===============================================
+! Cisco核心交换机生产环境初始化配置
+! 创建日期: 2024-01-01
+! 适用型号: Catalyst 9300/9400/6800系列
+! 配置用途: 核心交换机初始化
+! ===============================================
+
+! 基本系统配置
+! ===============================================
+hostname CORE-SW-01
+no ip domain-lookup
+ip domain-name company.local
+service timestamps debug datetime msec localtime show-timezone
+service timestamps log datetime msec localtime show-timezone
+service password-encryption
+service compress-config
+no service pad
+no service tcp-small-servers
+no service udp-small-servers
+
+! 时间同步配置
+! ===============================================
+clock timezone CST 8 0
+ntp server 192.168.1.10 prefer
+ntp server 192.168.1.11
+ntp authenticate
+ntp authentication-key 1 md5 NTP_KEY_2024
+ntp trusted-key 1
+
+! 系统安全基础配置
+! ===============================================
+! 禁用不必要的服务
+no ip http server
+no ip http secure-server
+no ip source-route
+no ip gratuitous-arps
+no cdp run
+no lldp run
+ip cef
+
+! 安全横幅配置
+banner motd ^C
+***********************************************************************
+*                        AUTHORIZED ACCESS ONLY                       *
+*                                                                     *
+* This system is the property of Company Name. Unauthorized access    *
+* to this device is strictly prohibited and will be prosecuted to     *
+* the full extent of the law. All activities are logged and monitored.*
+***********************************************************************
+^C
+
+! 用户账号和权限配置
+! ===============================================
+! 创建本地管理员账号
+username admin privilege 15 algorithm-type scrypt secret Admin@2024!
+username netadmin privilege 15 algorithm-type scrypt secret NetAdmin@2024!
+username backup privilege 15 algorithm-type scrypt secret Backup@2024!
+
+! Enable密码配置
+enable algorithm-type scrypt secret Enable@2024!
+
+! AAA配置
+aaa new-model
+aaa authentication login default local
+aaa authentication enable default enable
+aaa authorization exec default local
+aaa accounting exec default start-stop local
+aaa accounting commands 15 default start-stop local
+
+! 控制台和VTY访问配置
+! ===============================================
+line con 0
+ logging synchronous
+ login authentication default
+ transport output none
+ exec-timeout 10 0
+ password Console@2024!
+
+line vty 0 4
+ transport input ssh
+ login authentication default
+ exec-timeout 15 0
+ logging synchronous
+ access-class VTY-ACCESS in
+
+line vty 5 15
+ transport input ssh
+ login authentication default
+ exec-timeout 15 0
+ logging synchronous
+ access-class VTY-ACCESS in
+
+! SSH安全配置
+! ===============================================
+ip ssh version 2
+ip ssh time-out 60
+ip ssh authentication-retries 2
+crypto key generate rsa general-keys modulus 2048
+
+! 管理VLAN和接口配置
+! ===============================================
+vlan 10
+ name MANAGEMENT
+ 
+vlan 100
+ name SERVERS
+ 
+vlan 200
+ name WORKSTATIONS
+ 
+vlan 999
+ name UNUSED_PORTS
+
+interface vlan 10
+ description === MANAGEMENT VLAN ===
+ ip address 192.168.10.10 255.255.255.0
+ no shutdown
+
+! 默认网关配置
+ip default-gateway 192.168.10.1
+ip route 0.0.0.0 0.0.0.0 192.168.10.1
+
+! 生成树协议配置
+! ===============================================
+spanning-tree mode rapid-pvst
+spanning-tree vlan 1-4094 priority 4096
+spanning-tree portfast default
+spanning-tree portfast bpduguard default
+spanning-tree extend system-id
+
+! 端口安全模板配置
+! ===============================================
+! 接入端口模板
+interface range gi1/0/1-24
+ description === ACCESS PORTS ===
+ switchport mode access
+ switchport access vlan 200
+ switchport port-security
+ switchport port-security maximum 3
+ switchport port-security violation restrict
+ switchport port-security aging time 1440
+ spanning-tree portfast
+ spanning-tree bpduguard enable
+ storm-control broadcast level 10.00
+ storm-control multicast level 10.00
+ storm-control unicast level 10.00
+ no shutdown
+
+! 未使用端口安全配置
+interface range gi1/0/25-48
+ description === UNUSED PORTS - SECURITY DISABLED ===
+ switchport mode access
+ switchport access vlan 999
+ shutdown
+
+! Trunk端口配置示例
+interface gi1/0/49-52
+ description === TRUNK TO DISTRIBUTION ===
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ switchport trunk allowed vlan 10,100,200
+ switchport trunk native vlan 10
+ spanning-tree guard root
+ no shutdown
+
+! 访问控制列表配置
+! ===============================================
+! VTY访问控制
+ip access-list standard VTY-ACCESS
+ 10 permit 192.168.10.0 0.0.0.255
+ 20 permit 192.168.100.0 0.0.0.255
+ 30 deny any log
+
+! 管理访问控制
+ip access-list extended MGMT-ACCESS
+ 10 permit tcp 192.168.10.0 0.0.0.255 any eq 22
+ 20 permit tcp 192.168.10.0 0.0.0.255 any eq 443
+ 30 permit icmp 192.168.10.0 0.0.0.255 any
+ 40 deny ip any any log
+
+! SNMP配置
+! ===============================================
+snmp-server community R3adOnly RO 10
+snmp-server community Wr1t3Acc3ss RW 10
+snmp-server location "Data Center - Rack A01"
+snmp-server contact "Network Admin <netadmin@company.com>"
+snmp-server chassis-id CORE-SW-01
+snmp-server enable traps snmp authentication linkdown linkup coldstart warmstart
+snmp-server host 192.168.10.50 version 2c R3adOnly
+
+access-list 10 permit 192.168.10.0 0.0.0.255
+access-list 10 deny any log
+
+! 日志配置
+! ===============================================
+logging buffered 16384 informational
+logging console warnings
+logging trap informational
+logging facility local0
+logging source-interface vlan 10
+logging host 192.168.10.100
+
+! 重要事件日志记录
+logging event link-status
+logging event trunk-status
+logging event spanning-tree
+
+! 系统监控配置
+! ===============================================
+! CPU和内存监控
+process cpu threshold type total rising 80 interval 5
+process cpu statistics limit entry-percentage 5
+memory free low-watermark processor 50000
+
+! 环境监控
+environmental monitor shutdown temperature 70
+environmental monitor shutdown fan
+
+! 端口镜像配置示例（按需启用）
+! ===============================================
+! monitor session 1 source interface gi1/0/1-10
+! monitor session 1 destination interface gi1/0/48
+
+! 堆叠配置（如果适用）
+! ===============================================
+! switch 1 priority 15
+! switch 2 priority 14
+! switch 1 provision ws-c3850-24t
+! switch 2 provision ws-c3850-24t
+
+! 备份和恢复配置
+! ===============================================
+! 定期配置备份到TFTP服务器
+kron occurrence

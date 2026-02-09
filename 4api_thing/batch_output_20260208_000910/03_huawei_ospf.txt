@@ -1,0 +1,204 @@
+# 汇聚路由器OSPF配置
+
+以下是华为汇聚路由器OSPF生产环境配置模板：
+
+```bash
+#
+# 华为汇聚路由器OSPF配置
+# 用途: 汇聚层路由器OSPF协议配置
+# 环境: 生产环境
+# 配置日期: 2024-01-XX
+# 配置人员: Network Team
+#
+
+# ==========================================
+# 基础系统配置
+# ==========================================
+system-view
+
+# 设置设备名称
+sysname AGG-Router-01
+
+# 配置时钟和时区
+clock timezone BJ add 08:00:00
+clock daylight-saving-time BJ repeating 00:00 last sun mar 00:00 last sun oct 01:00
+
+# ==========================================
+# OSPF路由器ID和基础配置
+# ==========================================
+
+# 配置Loopback接口作为Router ID
+interface LoopBack0
+ description "Router ID and Management Interface"
+ ip address 172.16.1.1 255.255.255.255
+quit
+
+# ==========================================
+# OSPF进程配置
+# ==========================================
+
+# 启用OSPF进程
+ospf 100 router-id 172.16.1.1
+ # 配置区域认证（生产环境必须）
+ area 0.0.0.0
+  authentication-mode md5 1 cipher Huawei@123!
+ quit
+ 
+ area 0.0.0.10
+  authentication-mode md5 1 cipher Huawei@123!
+  # 配置为stub区域（如果适用）
+  stub no-summary
+ quit
+ 
+ # OSPF安全配置
+ # 限制LSA数量防止攻击
+ lsa-arrival-interval 2000
+ lsa-generation-interval 10000
+ spf-schedule-interval intelligent-timer
+ 
+ # 配置优先级和度量值
+ bandwidth-reference 10000
+ 
+ # 启用OSPF日志记录
+ log-peer-change
+ 
+ # 配置网段宣告
+ # 骨干区域网段
+ area 0.0.0.0
+  network 172.16.1.1 0.0.0.0
+  network 192.168.10.0 0.0.0.255
+  network 192.168.20.0 0.0.0.255
+ quit
+ 
+ # 汇聚区域网段
+ area 0.0.0.10
+  network 10.1.0.0 0.0.255.255
+  network 10.2.0.0 0.0.255.255
+ quit
+ 
+quit
+
+# ==========================================
+# 接口OSPF配置
+# ==========================================
+
+# 上行接口配置（连接核心层）
+interface GigabitEthernet0/0/1
+ description "Uplink to Core-Router-01"
+ ip address 192.168.10.2 255.255.255.252
+ ospf 100 area 0.0.0.0
+ ospf cost 10
+ ospf priority 100
+ # OSPF认证配置
+ ospf authentication-mode md5 1 cipher Huawei@123!
+ # 接口安全配置
+ ospf mtu-ignore
+ ospf timer hello 10
+ ospf timer dead 40
+quit
+
+interface GigabitEthernet0/0/2
+ description "Uplink to Core-Router-02"
+ ip address 192.168.20.2 255.255.255.252
+ ospf 100 area 0.0.0.0
+ ospf cost 10
+ ospf priority 100
+ ospf authentication-mode md5 1 cipher Huawei@123!
+ ospf mtu-ignore
+ ospf timer hello 10
+ ospf timer dead 40
+quit
+
+# 下行接口配置（连接接入层）
+interface GigabitEthernet0/0/3
+ description "Downlink to Access-Switch-01"
+ ip address 10.1.1.1 255.255.255.0
+ ospf 100 area 0.0.0.10
+ ospf cost 100
+ ospf priority 120
+ ospf authentication-mode md5 1 cipher Huawei@123!
+ # 配置为网络类型广播
+ ospf network-type broadcast
+ ospf timer hello 10
+ ospf timer dead 40
+quit
+
+interface GigabitEthernet0/0/4
+ description "Downlink to Access-Switch-02"
+ ip address 10.2.1.1 255.255.255.0
+ ospf 100 area 0.0.0.10
+ ospf cost 100
+ ospf priority 120
+ ospf authentication-mode md5 1 cipher Huawei@123!
+ ospf network-type broadcast
+ ospf timer hello 10
+ ospf timer dead 40
+quit
+
+# ==========================================
+# 路由策略配置
+# ==========================================
+
+# 配置默认路由重分发（如果需要）
+ospf 100
+ # 仅在必要时重分发默认路由
+ default-route-advertise cost 100 type 1
+ 
+ # 配置路由过滤（生产环境重要）
+ import-route static cost 150 type 2 tag 100
+ 
+ # 配置路由汇总（在ABR上）
+ area 0.0.0.10
+  abr-summary 10.0.0.0 255.0.0.0 cost 200
+ quit
+quit
+
+# 创建IP前缀列表进行路由过滤
+ip ip-prefix OSPF-IN-FILTER index 10 permit 172.16.0.0 16 greater-equal 24 less-equal 30
+ip ip-prefix OSPF-IN-FILTER index 20 permit 10.0.0.0 8 greater-equal 16 less-equal 24
+ip ip-prefix OSPF-IN-FILTER index 30 permit 192.168.0.0 16 greater-equal 24 less-equal 30
+ip ip-prefix OSPF-IN-FILTER index 100 deny 0.0.0.0 0
+
+# 应用路由过滤策略
+ospf 100
+ filter-policy ip-prefix OSPF-IN-FILTER import
+quit
+
+# ==========================================
+# OSPF安全加固配置
+# ==========================================
+
+# 配置OSPF区域边界路由器安全
+ospf 100
+ # 限制外部LSA数量
+ lsa-limit external 1000
+ 
+ # 配置SPF计算延迟
+ spf-schedule-interval 5 1000 5000
+ 
+ # 启用OSPF Graceful Restart
+ graceful-restart
+ graceful-restart interval 120
+ graceful-restart suppress-sa
+quit
+
+# ==========================================
+# 监控和维护配置
+# ==========================================
+
+# 配置SNMP监控（如果需要）
+snmp-agent
+snmp-agent local-engineid 800007DB03000194982AB400
+snmp-agent community read cipher Readonly@2024
+snmp-agent community write cipher Readwrite@2024
+snmp-agent sys-info contact "Network Team <network@company.com>"
+snmp-agent sys-info location "Data Center Room A"
+
+# 配置NTP时间同步
+ntp-service unicast-server 192.168.1.100 preference
+ntp-service unicast-server 192.168.1.101
+
+# 配置日志记录
+info-center enable
+info-center timestamp debugging boot
+info-center loghost 192.168.1.

@@ -1,0 +1,206 @@
+```cisco
+!
+! ========================================
+! Cisco Router Initial Configuration
+! Hostname: homelab-r1
+! Configuration Type: Production-Ready Initial Setup
+! ========================================
+!
+
+! === BASIC SYSTEM CONFIGURATION ===
+! Set device hostname
+hostname homelab-r1
+
+! Enable password encryption for all passwords
+service password-encryption
+
+! Enable timestamps on log messages for troubleshooting
+service timestamps debug datetime msec localtime show-timezone
+service timestamps log datetime msec localtime show-timezone
+
+! Disable unnecessary services for security
+no service pad
+no service finger
+no service udp-small-servers
+no service tcp-small-servers
+no ip http server
+no ip http secure-server
+no cdp run
+
+! Set timezone (modify according to your location)
+! Example: clock timezone EST -5 0
+! Example: clock summer-time EDT recurring
+clock timezone UTC 0 0
+
+! === SECURITY CONFIGURATION ===
+! Set enable secret (CHANGE THIS PASSWORD!)
+enable secret Changeme123!
+
+! Configure console access
+line con 0
+ password Console123!
+ login
+ logging synchronous
+ exec-timeout 15 0
+ transport preferred none
+
+! Configure VTY (Telnet/SSH) access
+line vty 0 4
+ password VTY123!
+ login local
+ logging synchronous
+ exec-timeout 15 0
+ transport input ssh
+ transport output ssh
+
+! Configure auxiliary port
+line aux 0
+ password Aux123!
+ login
+ exec-timeout 15 0
+ transport input none
+ transport output none
+
+! === USER ACCOUNT CONFIGURATION ===
+! Create local admin user (CHANGE USERNAME AND PASSWORD!)
+username admin privilege 15 secret Admin123!
+
+! === DOMAIN AND SSH CONFIGURATION ===
+! Set domain name for SSH (modify according to your domain)
+ip domain-name homelab.local
+
+! Generate RSA key for SSH (may take a moment)
+crypto key generate rsa general-keys modulus 2048
+
+! Configure SSH version 2 only
+ip ssh version 2
+ip ssh time-out 60
+ip ssh authentication-retries 3
+
+! === LOGGING CONFIGURATION ===
+! Configure logging
+logging buffered 16384
+logging console warnings
+logging monitor warnings
+
+! Set log server (uncomment and modify IP as needed)
+! logging host 192.168.1.100
+
+! === BANNER CONFIGURATION ===
+! Login banner for security notice
+banner login ^C
+***************************************************************************
+*                                                                         *
+*                        AUTHORIZED ACCESS ONLY                          *
+*                                                                         *
+*    This system is for authorized users only. All activities are        *
+*    monitored and logged. Unauthorized access is prohibited.            *
+*                                                                         *
+***************************************************************************
+^C
+
+! MOTD Banner
+banner motd ^C
+=========================================================================
+ Device: homelab-r1
+ Location: [MODIFY: Add your location]
+ Contact: [MODIFY: Add admin contact info]
+ 
+ Unauthorized access prohibited!
+=========================================================================
+^C
+
+! === INTERFACE CONFIGURATION TEMPLATES ===
+! Management interface configuration (modify as needed)
+! interface GigabitEthernet0/0
+!  description [MODIFY: WAN Connection to ISP]
+!  ip address dhcp
+!  no shutdown
+
+! interface GigabitEthernet0/1
+!  description [MODIFY: LAN Connection]
+!  ip address 192.168.1.1 255.255.255.0
+!  no shutdown
+
+! Loopback interface for management
+interface Loopback0
+ description Management Loopback
+ ip address 10.255.255.1 255.255.255.255
+
+! === ROUTING CONFIGURATION ===
+! Default route (uncomment and modify as needed)
+! ip route 0.0.0.0 0.0.0.0 [MODIFY: Next-hop IP or exit interface]
+
+! === SNMP CONFIGURATION (Optional) ===
+! Configure SNMP (uncomment and modify as needed)
+! snmp-server community [MODIFY: community-string] RO
+! snmp-server location [MODIFY: Physical location]
+! snmp-server contact [MODIFY: Admin contact]
+
+! === NTP CONFIGURATION ===
+! Configure NTP servers (modify as needed)
+! ntp server 0.pool.ntp.org prefer
+! ntp server 1.pool.ntp.org
+
+! === ACCESS CONTROL LISTS ===
+! Basic management ACL template (uncomment and modify as needed)
+! access-list 10 permit 192.168.1.0 0.0.0.255
+! access-list 10 deny any log
+
+! Apply ACL to VTY lines for SSH access control
+! line vty 0 4
+!  access-class 10 in
+
+! === DHCP CONFIGURATION TEMPLATE ===
+! DHCP pool configuration (uncomment and modify as needed)
+! ip dhcp excluded-address 192.168.1.1 192.168.1.10
+! ip dhcp pool LAN
+!  network 192.168.1.0 255.255.255.0
+!  default-router 192.168.1.1
+!  dns-server 8.8.8.8 8.8.4.4
+!  domain-name homelab.local
+!  lease 7
+
+! === NAT CONFIGURATION TEMPLATE ===
+! NAT configuration (uncomment and modify as needed)
+! ip nat inside source list 100 interface GigabitEthernet0/0 overload
+! access-list 100 permit ip 192.168.1.0 0.0.0.255 any
+!
+! Apply NAT to interfaces:
+! interface GigabitEthernet0/0
+!  ip nat outside
+! interface GigabitEthernet0/1
+!  ip nat inside
+
+! === SAVE CONFIGURATION ===
+! Remember to save configuration after applying
+! copy running-config startup-config
+
+!
+! ========================================
+! PARAMETERS TO MODIFY FOR YOUR ENVIRONMENT:
+! ========================================
+! 1. All passwords (enable secret, line passwords, username)
+! 2. Domain name (ip domain-name)
+! 3. Interface IP addresses and descriptions
+! 4. Default route next-hop
+! 5. SNMP community strings and contact info
+! 6. NTP servers
+! 7. DHCP pool settings
+! 8. ACL permit statements for your network
+! 9. Banner contact information
+! 10. Timezone settings
+! 11. Logging server IP address
+! ========================================
+!
+! SECURITY NOTES:
+! - All default passwords MUST be changed
+! - SSH keys are generated with 2048-bit encryption
+! - Unnecessary services are disabled
+! - Console and VTY timeouts are configured
+! - Password encryption is enabled
+! - Access control ready for implementation
+! ========================================
+!
+end
+```

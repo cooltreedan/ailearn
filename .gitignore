@@ -11,6 +11,11 @@ pyvenv.cfg
 2proj/topology_preview.html
 2proj/__pycache__/
 
+# ingore api key and week2 some files
+4api_thing/.env
+4api_thing/*.pyc
+4api_thing/__pycache__/
+
 # ignore macOS system file
 .DS_Store
 
